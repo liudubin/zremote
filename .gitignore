@@ -1,0 +1,15 @@
+# 构建产物与本地配置
+bin/
+dist/
+ios/.build/
+ios/ZRemote.xcodeproj/
+tools/genicon/AppIcon.png
+
+# 凭证与配置 (含访问令牌, 严禁入库)
+*.pem
+zremote.json
+
+# 杂项
+*.log
+.DS_Store
+.mimosa/

@@ -1,0 +1,890 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ZRemote">
+<title>ZRemote</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #151a23; --panel2: #1c2330;
+    --fg: #e6e9f0; --dim: #8b93a7; --acc: #4f8cff; --ok: #2ecc71; --warn: #f39c12; --err: #e74c3c;
+    --radius: 10px;
+    --key-h: 38px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    height: 100vh; height: 100dvh;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; flex-direction: column;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    overscroll-behavior: none; overflow: hidden;
+  }
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+  header {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: var(--panel); border-bottom: 1px solid #232b3b;
+    padding-top: max(6px, env(safe-area-inset-top));
+    font-size: 13px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  }
+  header::-webkit-scrollbar { display: none; }
+  header > * { flex-shrink: 0; }
+  #logo { font-weight: 700; color: var(--acc); white-space: nowrap; }
+  .chip { color: var(--dim); white-space: nowrap; }
+  .chip b { color: var(--fg); font-weight: 600; }
+  .chip .ok { color: var(--ok); } .chip .warn { color: var(--warn); }
+  .spacer { flex: 1; min-width: 4px; }
+  @media (max-width: 1400px) { #logo, #st-res, #st-net { display: none; } }
+  @media (max-width: 900px) { #st-enc { display: none; } }
+  button {
+    background: var(--panel2); color: var(--fg); border: 1px solid #2a3448;
+    border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer;
+    white-space: nowrap; touch-action: manipulation;
+  }
+  button:active { background: #25304a; }
+  button.on { background: var(--acc); border-color: var(--acc); color: #fff; }
+  button.danger.on { background: var(--err); border-color: var(--err); }
+  #stage { flex: 1; position: relative; background: #000; overflow: hidden; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(5,8,14,.82); backdrop-filter: blur(6px); text-align: center; z-index: 30;
+    padding: 20px;
+  }
+  #overlay.hide { display: none; }
+  #overlay .box { max-width: 420px; }
+  #overlay h2 { margin: 0 0 8px; font-size: 18px; }
+  #overlay p { margin: 4px 0; color: var(--dim); font-size: 13px; line-height: 1.6; }
+  .spin {
+    width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
+    border: 3px solid #2a3448; border-top-color: var(--acc); animation: sp 1s linear infinite;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  footer {
+    background: var(--panel); border-top: 1px solid #232b3b;
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+  }
+  #dock { display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; }
+  #dock::-webkit-scrollbar { display: none; }
+  #menu { display: none; padding: 4px 10px 10px; }
+  #menu.open { display: block; }
+  .mrow { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; font-size: 13px; }
+  .mrow label { color: var(--dim); min-width: 52px; }
+  select, input[type=text] {
+    background: var(--panel2); color: var(--fg); border: 1px solid #2a3448;
+    border-radius: 8px; padding: 6px 8px; font-size: 13px;
+  }
+  input[type=text] { flex: 1; min-width: 140px; }
+  .kbd {
+    min-width: 40px; text-align: center; padding: 8px 10px; font-size: 13px;
+    font-weight: 600; height: var(--key-h);
+  }
+  #toast {
+    position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+    background: rgba(20,26,38,.92); border: 1px solid #2a3448; color: var(--fg);
+    border-radius: 8px; padding: 8px 14px; font-size: 13px; z-index: 40;
+    opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 80%;
+  }
+  #toast.show { opacity: 1; }
+  #lockbanner {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    background: rgba(243,156,18,.15); border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 999px; padding: 8px 18px; font-size: 13px; z-index: 35; cursor: pointer;
+    white-space: nowrap; max-width: 92%; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hint { color: var(--dim); font-size: 12px; }
+
+  /* ───────── 手机/平板触控目标加大 ───────── */
+  .touch button, .touch select { font-size: 14px; }
+  /* iOS: 输入控件 <16px 会触发 Safari 聚焦自动放大页面 */
+  .touch input[type=text], .touch select { font-size: 16px; }
+  .touch .kbd { min-width: 52px; padding: 10px 12px; height: auto; min-height: 44px; }
+  .touch #dock { gap: 8px; padding: 8px 10px; }
+
+  /* ───────── 手机竖屏: 键盘换行网格 + 菜单变底部抽屉 + 旋转提示 ───────── */
+  .mode-phone-portrait #dock { flex-wrap: wrap; justify-content: center; }
+  .mode-phone-portrait #menu {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 32;
+    background: var(--panel); border-radius: 16px 16px 0 0;
+    max-height: 62vh; overflow-y: auto; padding-bottom: max(14px, env(safe-area-inset-bottom));
+    transform: translateY(110%); transition: transform .25s ease; pointer-events: none;
+    box-shadow: 0 -8px 30px rgba(0,0,0,.5);
+  }
+  .mode-phone-portrait #menu.open { transform: none; pointer-events: auto; }
+  #rotatehint {
+    display: none; position: absolute; left: 50%; bottom: 16%; transform: translateX(-50%);
+    background: rgba(21,26,35,.92); border: 1px solid #2a3448; border-radius: 999px;
+    padding: 9px 18px; font-size: 13px; z-index: 26; cursor: pointer; white-space: nowrap;
+  }
+  .mode-phone-portrait #rotatehint { display: block; }
+  #rotatehint.fade { opacity: 0; transition: opacity .8s; pointer-events: none; }
+
+  /* ───────── 手机横屏: 沉浸模式 — 悬浮工具胶囊 + 可唤出键盘 ───────── */
+  .mode-phone-landscape header {
+    position: fixed; top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left));
+    z-index: 25; background: rgba(21,26,35,.88); border: 1px solid #232b3b;
+    border-radius: 12px; padding: 4px 6px; gap: 4px; backdrop-filter: blur(8px);
+  }
+  .mode-phone-landscape .chip, .mode-phone-landscape #logo { display: none; }
+  .mode-phone-landscape header button { padding: 8px 10px; }
+  .mode-phone-landscape #lockbanner { bottom: 58px; font-size: 12px; padding: 6px 14px; }
+  #statpill {
+    display: none; position: absolute; top: max(10px, env(safe-area-inset-top)); right: 10px;
+    background: rgba(21,26,35,.75); border: 1px solid #232b3b; border-radius: 999px;
+    padding: 5px 12px; font-size: 12px; color: var(--dim); z-index: 22; pointer-events: none;
+  }
+  #statpill b { color: var(--fg); }
+  .mode-phone-landscape #statpill { display: block; }
+  #dockhandle {
+    display: none; position: absolute; bottom: max(10px, env(safe-area-inset-bottom));
+    left: 50%; transform: translateX(-50%); z-index: 27;
+    background: rgba(28,35,48,.9); border: 1px solid #2a3448; border-radius: 999px;
+    padding: 7px 16px; font-size: 13px; backdrop-filter: blur(8px);
+  }
+  .mode-phone-landscape #dockhandle { display: block; }
+  .mode-phone-landscape footer {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 28;
+    background: rgba(21,26,35,.94); backdrop-filter: blur(10px);
+    border-top: 1px solid #232b3b;
+    transform: translateY(110%); transition: transform .25s ease;
+  }
+  .mode-phone-landscape body.dock-open footer, body.dock-open footer { transform: none; }
+  body.dock-open #dockhandle { display: none !important; }
+
+  /* 伪全屏 (iOS Safari 不支持元素 Fullscreen API 时的兜底) */
+  body.pseudofs #app { position: fixed; inset: 0; z-index: 100; }
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <span id="logo">ZRemote</span>
+  <span class="chip" id="st-v">视频 <b class="warn">连接中</b></span>
+  <span class="chip" id="st-res"></span>
+  <span class="chip" id="st-dec"></span>
+  <span class="chip" id="st-enc"></span>
+  <span class="chip" id="st-net"></span>
+  <span class="spacer"></span>
+  <button id="btn-lock" class="danger on">🔒 输入锁定</button>
+  <button id="btn-kbd">⌨</button>
+  <button id="btn-menu">⚙</button>
+  <button id="btn-fs">⛶</button>
+</header>
+
+<div id="stage">
+  <canvas id="cv"></canvas>
+  <div id="statpill">…</div>
+  <button id="dockhandle">⌨ 键盘</button>
+  <div id="rotatehint">🔄 横屏体验更佳</div>
+  <div id="lockbanner">🔒 输入已锁定 — 点击解锁后即可控制远程电脑</div>
+  <div id="overlay">
+    <div class="box">
+      <div class="spin" id="ov-spin"></div>
+      <h2 id="ov-title">正在连接…</h2>
+      <p id="ov-msg"></p>
+    </div>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<footer>
+  <div id="dock"></div>
+  <div id="menu">
+    <div class="mrow">
+      <label>画质</label>
+      <select id="sel-scale">
+        <option value="native">原生分辨率</option>
+        <option value="2560x1440">2560×1440</option>
+        <option value="1920x1080">1920×1080</option>
+        <option value="1280x720">1280×720</option>
+      </select>
+      <label>码率</label>
+      <select id="sel-br">
+        <option value="20">20 Mbps</option>
+        <option value="40">40 Mbps</option>
+        <option value="60" selected>60 Mbps</option>
+        <option value="100">100 Mbps</option>
+      </select>
+      <label>帧率</label>
+      <select id="sel-fps">
+        <option value="60">60 fps</option>
+        <option value="120" selected>120 fps</option>
+      </select>
+    </div>
+    <div class="mrow">
+      <label>鼠标</label>
+      <select id="sel-mouse">
+        <option value="abs" selected>绝对坐标 (办公)</option>
+        <option value="rel">相对移动 (游戏/触屏更跟手)</option>
+      </select>
+    </div>
+    <div class="mrow">
+      <label>独立App</label>
+      <button id="btn-install" style="display:none">安装到桌面</button>
+      <span class="hint" id="install-hint">安装后脱离浏览器独立运行, 点击图标直连本主机</span>
+    </div>
+    <div class="mrow">
+      <label>快捷键</label>
+      <button data-c="Ctrl,Shift,Esc">任务管理器</button>
+      <button data-c="Alt,F4">Alt+F4</button>
+      <button data-c="Win,L">锁屏 Win+L</button>
+      <button data-c="Win,D">显示桌面</button>
+      <button data-c="Win,E">文件管理器</button>
+    </div>
+    <div class="mrow">
+      <label>发文本</label>
+      <input type="text" id="txtin" placeholder="中文/英文… 回车发送到远程" autocomplete="off">
+      <button id="btn-txt">发送</button>
+    </div>
+    <div class="mrow"><span class="hint">
+      触屏: 单指移动=光标 · 点按=左键 · 双击=双击 · 长按=右键 · 双击后按住拖动=拖拽 · 双指上下=滚轮 · 双指点按=右键<br>
+      电脑: 鼠标键盘直通 · 相对模式下点击画面锁定指针, Esc 退出 · Ctrl+Alt+Del 无法注入(用 Ctrl+Shift+Esc)
+    </span></div>
+  </div>
+</footer>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const qs = new URLSearchParams(location.search);
+const TOKEN = qs.get("k") || "";
+
+// ───────── 状态 ─────────
+let ws = null, wsAlive = false, retryTimer = null, retryN = 0;
+let dec = null, needKey = true, decCfg = null, decSps = null;
+let sps = null, pps = null;
+let ts = 0;
+let videoW = 0, videoH = 0;
+let contentRect = {x:0, y:0, w:0, h:0};
+let inputLocked = true;
+let mouseMode = localStorage.getItem("zr-mouse") === "rel" ? "rel" : "abs";
+let stat = { decFps: 0, decCnt: 0, kbps: 0, bytes: 0, latSum: 0, latN: 0, netMbps: 0 };
+const canvas = $("cv"), ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+
+// ───────── 三端形态: desktop / phone(portrait|landscape) / tablet ─────────
+function updateMode() {
+  const coarse = matchMedia("(pointer: coarse)").matches;
+  const w = innerWidth, h = innerHeight;
+  const portrait = h >= w;
+  let mode = "desktop";
+  if (coarse) mode = Math.min(w, h) < 600 ? "phone" : "tablet";
+  const keep = ["dock-open", "pseudofs"].filter(c => document.body.classList.contains(c));
+  document.body.className =
+    `mode-${mode}-${portrait ? "portrait" : "landscape"}${coarse ? " touch" : ""}` +
+    (keep.length ? " " + keep.join(" ") : "");
+  $("sel-mouse").value = mouseMode;
+}
+updateMode();
+addEventListener("resize", updateMode);
+matchMedia("(orientation: portrait)").addEventListener?.("change", updateMode);
+
+// 屏幕常亮
+let wakeLock = null;
+async function reqWake() {
+  try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && wakeLock?.released) reqWake();
+});
+
+// 全屏: 支持则 API 全屏 + 横屏锁定, iOS Safari 伪全屏兜底
+function goFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) {
+    el.requestFullscreen().then(() => {
+      screen.orientation?.lock?.("landscape").catch(() => {});
+    }).catch(() => document.body.classList.add("pseudofs"));
+  } else {
+    document.body.classList.toggle("pseudofs");
+  }
+  reqWake();
+}
+$("btn-fs").onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else goFullscreen();
+};
+$("rotatehint").onclick = () => { goFullscreen(); $("rotatehint").classList.add("fade"); };
+setTimeout(() => $("rotatehint").classList.add("fade"), 8000);
+
+// 手机横屏沉浸: 键盘抽屉
+$("dockhandle").onclick = () => document.body.classList.add("dock-open");
+canvas.addEventListener("touchstart", () => {
+  if (document.body.classList.contains("dock-open")) document.body.classList.remove("dock-open");
+}, { passive: true, capture: true });
+
+// ───────── 界面反馈 ─────────
+function toast(msg, ms = 2200) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._tm); t._tm = setTimeout(() => t.classList.remove("show"), ms);
+}
+function ov(title, msg, spin = true) {
+  $("overlay").classList.remove("hide");
+  $("ov-title").textContent = title;
+  $("ov-msg").innerHTML = msg || "";
+  $("ov-spin").style.display = spin ? "" : "none";
+}
+function ovHide() { $("overlay").classList.add("hide"); }
+function setV(state, txt) {
+  const el = $("st-v").querySelector("b");
+  el.textContent = txt; el.className = state;
+}
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+
+// ───────── H.264 工具 ─────────
+function* nalsOf(buf) {
+  let i = 0;
+  while (i < buf.length - 3) {
+    if (buf[i] !== 0 || buf[i+1] !== 0 || buf[i+2] !== 1) { i++; continue; }
+    let j = i + 3, next = -1;
+    while (j < buf.length - 3) {
+      if (buf[j] === 0 && buf[j+1] === 0 && buf[j+2] === 1) { next = j; break; }
+      j++;
+    }
+    const end = next < 0 ? buf.length : next;
+    if (end > i + 3) yield { type: buf[i + 3] & 0x1F, data: buf.subarray(i + 3, end) };
+    if (next < 0) return;
+    i = next;
+  }
+}
+const hx = b => b.toString(16).padStart(2, "0");
+
+function ensureDecoder() {
+  const same = dec && dec.state === "configured" && decCfg && sps &&
+    decCfg[0] === sps[1] && decCfg[1] === sps[2] && decCfg[2] === sps[3];
+  if (same) return;
+  const codec = "avc1." + hx(sps[1]) + hx(sps[2]) + hx(sps[3]);
+  // 码流为 Annex-B (起始码 + 带内 SPS/PPS), 因此不提供 avcC description
+  const config = { codec, optimizeForLatency: true };
+  if (dec) { try { dec.close(); } catch (e) {} }
+  dec = new VideoDecoder({
+    output: frame => {
+      stat.decCnt++; stat.latN++;
+      drawFrame(frame);
+      frame.close();
+    },
+    error: e => {
+      window._decErr = String(e);
+      console.warn("decoder:", e);
+      needKey = true;
+      try { dec.close(); } catch (x) {}
+      if (String(e).includes("unsupported")) {
+        ov("解码失败", "此设备硬件不支持该规格的 H.264 解码<br>试试在 ⚙ 里降低画质/帧率", false);
+      }
+    },
+  });
+  dec.configure(config);
+  decCfg = [sps[1], sps[2], sps[3]];
+  decSps = sps;
+}
+
+function drawFrame(frame) {
+  const r = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cw = Math.round(r.width * dpr), ch = Math.round(r.height * dpr);
+  if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+  const vw = frame.displayWidth, vh = frame.displayHeight;
+  if (vw !== videoW || vh !== videoH) {
+    videoW = vw; videoH = vh;
+    $("st-res").innerHTML = "分辨率 <b>" + vw + "×" + vh + "</b>";
+  }
+  const s = Math.min(cw / vw, ch / vh);
+  const dw = vw * s, dh = vh * s;
+  const dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(frame, dx, dy, dw, dh);
+  contentRect = { x: dx, y: dy, w: dw, h: dh, cw, ch, dpr };
+}
+
+// ───────── WebSocket ─────────
+function connect() {
+  clearTimeout(retryTimer);
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  try { if (ws) { ws.onclose = null; ws.close(); } } catch (e) {}
+  ws = new WebSocket(proto + "://" + location.host + "/ws?k=" + encodeURIComponent(TOKEN));
+  ws.binaryType = "arraybuffer";
+  setV("warn", "连接中");
+  ws.onopen = () => {
+    wsAlive = true; retryN = 0;
+    ov("等待视频流…", "正在建立编码通道");
+  };
+  ws.onmessage = ev => {
+    const buf = ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : null;
+    if (!buf) return;
+    stat.bytes += buf.length;
+    if (buf[0] === 0x7b) { handleJSON(new TextDecoder().decode(buf)); return; }
+    onVideo(buf);
+  };
+  ws.onclose = () => {
+    wsAlive = false;
+    setV("err", "已断开");
+    ov("连接断开", "自动重连中…");
+    const delay = [1000, 2000, 4000, 8000][Math.min(retryN++, 3)];
+    retryTimer = setTimeout(connect, delay);
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+addEventListener("online", () => { if (!wsAlive) { retryN = 0; connect(); } });
+
+function handleJSON(s) {
+  let m; try { m = JSON.parse(s); } catch (e) { return; }
+  if (m.type === "stats") {
+    const enc = m.encoder ? m.encoder.toUpperCase() : "—";
+    $("st-enc").innerHTML = "编码 <b>" + enc + " " + (m.encFps || 0).toFixed(0) + "fps</b>";
+    $("st-net").innerHTML = "码率 <b>" + (m.encKbps || 0).toFixed(0) + " Mbps</b>";
+    stat.netMbps = m.encKbps || 0;
+    if (m.cfg) reflectCfg(m.cfg);
+    iosAutoTune();
+  }
+}
+function reflectCfg(c) {
+  if (!c) return;
+  $("sel-br").value = String(c.bitrate_mbps || 60);
+  $("sel-fps").value = String(c.fps || 120);
+  $("sel-scale").value = (c.scale_w && c.scale_h) ? c.scale_w + "x" + c.scale_h : "native";
+}
+
+let dropHint = 0;
+const bytesEq = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+function onVideo(buf) {
+  let hasSlice = false, isKey = false;
+  for (const n of nalsOf(buf)) {
+    if (n.type === 7) sps = n.data.slice();
+    else if (n.type === 8) pps = n.data.slice();
+    else if (n.type === 5) { hasSlice = true; isKey = true; }
+    else if (n.type === 1) hasSlice = true;
+  }
+  if (!hasSlice) { if (sps && pps) ensureDecoder(); return; }
+  if (!sps || !pps) return;
+  if (!("VideoDecoder" in window)) {
+    ov("浏览器不支持 WebCodecs", "请使用 Chrome/Edge 94+ 或 Safari 16.4+", false); return;
+  }
+  if (dec && dec.state === "configured" && decSps && !bytesEq(decSps, sps)) {
+    try { dec.close(); } catch (e) {}
+    dec = null; needKey = true;
+  }
+  ensureDecoder();
+  if (!dec || dec.state !== "configured") return;
+  if (needKey && !isKey) return;
+  needKey = false;
+  if (dec.decodeQueueSize > 12) {
+    if (++dropHint % 30 === 1) toast("解码压力较大，已丢帧 (可降低画质)");
+    if (!isKey) return;
+  }
+  let data = buf;
+  if (isKey) {
+    data = new Uint8Array(4 + sps.length + 4 + pps.length + buf.length);
+    let o = 0;
+    data[o++] = 0; data[o++] = 0; data[o++] = 0; data[o++] = 1; data.set(sps, o); o += sps.length;
+    data[o++] = 0; data[o++] = 0; data[o++] = 0; data[o++] = 1; data.set(pps, o); o += pps.length;
+    data.set(buf, o);
+  }
+  ts += Math.round(1000000 / 121) + 1;
+  const chunk = new EncodedVideoChunk({
+    type: isKey ? "key" : "delta",
+    timestamp: ts,
+    data,
+  });
+  const t0 = performance.now();
+  dec.decode(chunk);
+  stat.latSum += performance.now() - t0;
+}
+
+function send(obj) {
+  if (wsAlive && ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ───────── 统计 ─────────
+let stallSecs = 0;
+setInterval(() => {
+  stat.decFps = stat.decCnt;
+  const lat = stat.latN ? (stat.latSum / stat.latN) : 0;
+  $("st-dec").innerHTML = "解码 <b>" + stat.decFps + "fps</b> · " + lat.toFixed(1) + "ms";
+  $("statpill").innerHTML = "<b>" + stat.decFps + "</b>fps · <b>" +
+    Math.max(stat.netMbps, stat.bytes / 125000).toFixed(0) + "</b>Mbps";
+  stat.kbps = stat.bytes / 125000;
+  stat.decCnt = 0; stat.bytes = 0; stat.latSum = 0; stat.latN = 0;
+  if (stat.decFps > 0) {
+    setV("ok", "播放中"); ovHide(); stallSecs = 0;
+  } else if (wsAlive && ++stallSecs >= 3) {   // 已连接但无解码 → 流重建中
+    setV("warn", "重建流中");
+    ov("视频流重建中…", "编码器切换/画面变更后 1 秒内自动恢复");
+  }
+}, 1000);
+
+// ───────── 输入: 鼠标 (桌面; 相对模式用指针锁定) ─────────
+function canvasXY(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+}
+canvas.addEventListener("mousemove", e => {
+  if (inputLocked) return;
+  if (document.pointerLockElement === canvas) {          // 相对模式 (游戏)
+    send({ t: "mr", dx: e.movementX * 1.4, dy: e.movementY * 1.4 });
+    return;
+  }
+  if (e.pointerType === "touch") return;
+  if (mouseMode === "abs") {
+    const p = canvasXY(e);
+    send({ t: "mm", x: p.x, y: p.y });
+  }
+});
+canvas.addEventListener("mousedown", e => {
+  if (inputLocked) return;
+  e.preventDefault();
+  if (mouseMode === "rel" && matchMedia("(pointer: fine)").matches &&
+      document.pointerLockElement !== canvas) {
+    canvas.requestPointerLock?.();
+  }
+  if (document.pointerLockElement === canvas) return;    // 锁定时首击只用于锁定
+  send({ t: "mm", ...canvasXY(e) });
+  send({ t: "md", b: e.button });
+});
+window.addEventListener("mouseup", e => {
+  if (inputLocked) return;
+  send({ t: "mu", b: e.button });
+});
+let wheelAcc = 0, wheelTm = 0;
+canvas.addEventListener("wheel", e => {
+  if (inputLocked) return;
+  e.preventDefault();
+  wheelAcc += e.deltaY;
+  const now = performance.now();
+  if (now - wheelTm > 90 && Math.abs(wheelAcc) >= 20) {
+    send({ t: "wh", dy: Math.round(Math.max(-3, Math.min(3, wheelAcc / 53))) });
+    wheelAcc = 0; wheelTm = now;
+  }
+}, { passive: false });
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("pointerlockchange", () => {
+  if (document.pointerLockElement === canvas) toast("相对鼠标已锁定, Esc 退出");
+});
+
+// ───────── 输入: 键盘 (桌面) ─────────
+window.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (inputLocked) { if (e.code === "Escape") toggleLock(); return; }
+  if (e.code === "F11") return;
+  if (document.pointerLockElement === canvas && e.code === "Escape") return; // 浏览器保留
+  e.preventDefault();
+  send({ t: "kd", c: e.code });
+});
+window.addEventListener("keyup", e => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+  if (inputLocked) return;
+  if (e.code === "F11") return;
+  if (document.pointerLockElement === canvas && e.code === "Escape") return;
+  e.preventDefault();
+  send({ t: "ku", c: e.code });
+});
+
+// ───────── 输入: 触屏 (手机/平板) ─────────
+// 手势: 单指移动=光标 · 点按=左键 · 双击=双击 · 长按=右键 · 双击后按住=拖拽 · 双指上下=滚轮 · 双指点按=右键
+let touches = new Map();
+let tMode = "";                 // move | scroll | drag | consumed
+let lastTap = 0, lastTapXY = null, moved = false;
+let longTm = 0, holdTm = 0, vScroll = 0;
+let scrollMoved2f = false, last2f = null;
+
+function touchPos(t) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (t.clientX - r.left) / r.width, y: (t.clientY - r.top) / r.height };
+}
+function doClick(n, p) {
+  send({ t: "mm", x: p.x, y: p.y });
+  send({ t: "md", b: n }); send({ t: "mu", b: n });
+  buzz(n === 2 ? 25 : 12);
+}
+canvas.addEventListener("touchstart", e => {
+  if (inputLocked) return;
+  e.preventDefault();
+  for (const t of e.changedTouches) touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+  if (touches.size === 1) {
+    tMode = "move"; moved = false;
+    const t = e.changedTouches[0], p = touchPos(t);
+    const now = performance.now();
+    const isDbl = now - lastTap < 320 && lastTapXY &&
+                  Math.hypot(p.x - lastTapXY.x, p.y - lastTapXY.y) < 0.06;
+    longTm = setTimeout(() => {                          // 长按 → 右键
+      if (tMode === "move" && !moved) {
+        doClick(2, p); tMode = "consumed"; buzz(30);
+      }
+    }, 550);
+    if (isDbl) {                                         // 双击后按住 → 拖拽
+      holdTm = setTimeout(() => {
+        if (tMode === "move" && !moved) {
+          send({ t: "mm", x: p.x, y: p.y });
+          send({ t: "md", b: 0 });
+          tMode = "drag"; buzz(20);
+        }
+      }, 260);
+    }
+  } else if (touches.size === 2) {
+    clearTimeout(longTm); clearTimeout(holdTm);
+    if (tMode !== "consumed") tMode = "scroll";
+    vScroll = 0; scrollMoved2f = false;
+    const t = e.touches[0];
+    last2f = touchPos(t);
+  }
+}, { passive: false });
+canvas.addEventListener("touchmove", e => {
+  if (inputLocked) return;
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const prev = touches.get(t.identifier);
+    if (!prev) continue;
+    const dx = t.clientX - prev.x, dy = t.clientY - prev.y;
+    touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    if ((tMode === "move" || tMode === "drag") && touches.size === 1) {
+      if (mouseMode === "abs") {
+        const p = touchPos(t);
+        send({ t: "mm", x: p.x, y: p.y });
+      } else {
+        send({ t: "mr", dx: dx * 1.6, dy: dy * 1.6 });
+      }
+    } else if (tMode === "scroll") {
+      if (Math.abs(dy) > 3) scrollMoved2f = true;
+      vScroll += dy;
+      if (Math.abs(vScroll) > 28) {
+        send({ t: "wh", dy: -Math.round(vScroll / 53) });
+        vScroll = 0;
+      }
+    }
+  }
+}, { passive: false });
+canvas.addEventListener("touchend", e => {
+  if (!inputLocked) {
+    const t = e.changedTouches[0];
+    if (t && tMode === "move" && !moved && e.touches.length === 0) {
+      const p = touchPos(t), now = performance.now();
+      if (now - lastTap < 320 && lastTapXY &&
+          Math.hypot(p.x - lastTapXY.x, p.y - lastTapXY.y) < 0.06) {
+        doClick(0, p); doClick(0, p);                    // 双击
+        lastTap = 0;
+      } else {
+        doClick(0, p);                                   // 单击
+        lastTap = now; lastTapXY = { x: p.x, y: p.y };
+      }
+    }
+    if (tMode === "drag") { send({ t: "mu", b: 0 }); buzz(12); }
+    if (e.touches.length === 0) {
+      clearTimeout(longTm); clearTimeout(holdTm);
+      if (tMode === "scroll" && !scrollMoved2f && last2f) doClick(2, last2f); // 双指点按=右键
+      tMode = "";
+    }
+  }
+  for (const t of e.changedTouches) touches.delete(t.identifier);
+}, { passive: false });
+canvas.addEventListener("touchcancel", e => {
+  clearTimeout(longTm); clearTimeout(holdTm);
+  for (const t of e.changedTouches) touches.delete(t.identifier);
+  if (e.touches.length === 0) tMode = "";
+});
+
+// ───────── 虚拟按键 ─────────
+const VKEYS = [
+  ["Esc", "Esc"], ["Tab", "Tab_"], ["Enter", "Enter_"], ["Space", "Space_"], ["Del", "Del"],
+  ["←", "Left"], ["↑", "Up"], ["↓", "Down"], ["→", "Right"], ["Back", "Backspace_"],
+];
+const STICKY = [["Ctrl", "Ctrl"], ["Alt", "Alt"], ["Shift", "Shift"], ["Win", "Win"]];
+const stickyDown = new Set();
+function buildDock() {
+  const dock = $("dock");
+  dock.innerHTML = "";
+  for (const [label, code] of STICKY) {
+    const b = document.createElement("button");
+    b.className = "kbd"; b.textContent = label; b.dataset.code = code;
+    b.onclick = () => {
+      if (inputLocked) return toast("先解锁输入");
+      if (stickyDown.has(code)) {
+        stickyDown.delete(code); b.classList.remove("on");
+        send({ t: "ku", c: codeAlias(code) });
+      } else {
+        stickyDown.add(code); b.classList.add("on");
+        send({ t: "kd", c: codeAlias(code) });
+      }
+    };
+    dock.appendChild(b);
+  }
+  for (const [label, code] of VKEYS) {
+    const b = document.createElement("button");
+    b.className = "kbd"; b.textContent = label;
+    b.onclick = () => {
+      if (inputLocked) return toast("先解锁输入");
+      send({ t: "kd", c: codeAlias(code) }); send({ t: "ku", c: codeAlias(code) });
+    };
+    dock.appendChild(b);
+  }
+  const clr = document.createElement("button");
+  clr.textContent = "清除修饰";
+  clr.onclick = () => {
+    for (const code of [...stickyDown]) {
+      send({ t: "ku", c: codeAlias(code) });
+      stickyDown.delete(code);
+    }
+    buildDock();
+  };
+  dock.appendChild(clr);
+}
+function codeAlias(c) {
+  return { Ctrl: "ControlLeft", Alt: "AltLeft", Shift: "ShiftLeft", Win: "MetaLeft",
+           Tab_: "Tab", Enter_: "Enter", Space_: "Space", Backspace_: "Backspace",
+           Del: "Delete", Left: "ArrowLeft", Up: "ArrowUp", Down: "ArrowDown", Right: "ArrowRight",
+           Esc: "Escape" }[c] || c;
+}
+buildDock();
+
+// ───────── 菜单 / 设置 ─────────
+$("btn-menu").onclick = () => {
+  $("menu").classList.toggle("open");
+  $("btn-menu").classList.toggle("on");
+  if (document.body.className.includes("phone-landscape")) document.body.classList.add("dock-open");
+};
+$("btn-kbd").onclick = () => {
+  $("menu").classList.add("open");
+  document.body.classList.add("dock-open");
+  const i = $("txtin");
+  i.focus({ preventScroll: true });
+};
+$("sel-br").onchange = e => { send({ t: "cfg", bitrate: +e.target.value }); toast("码率 → " + e.target.value + " Mbps,重连流中"); };
+$("sel-fps").onchange = e => { send({ t: "cfg", fps: +e.target.value }); toast("帧率 → " + e.target.value + " fps"); };
+$("sel-scale").onchange = e => { send({ t: "cfg", scale: e.target.value }); toast("画质切换中…"); };
+$("sel-mouse").onchange = e => {
+  mouseMode = e.target.value;
+  localStorage.setItem("zr-mouse", mouseMode);
+  if (mouseMode === "abs" && document.pointerLockElement) document.exitPointerLock();
+  toast(mouseMode === "abs" ? "绝对鼠标" : "相对鼠标 (电脑端点击画面锁定指针)");
+};
+document.querySelectorAll("[data-c]").forEach(b => {
+  b.onclick = () => {
+    if (inputLocked) return toast("先解锁输入");
+    send({ t: "combo", keys: b.dataset.c.split(",") });
+  };
+});
+function sendText() {
+  const i = $("txtin");
+  if (!i.value) return;
+  if (inputLocked) return toast("先解锁输入");
+  send({ t: "txt", s: i.value });
+  i.value = "";
+}
+$("btn-txt").onclick = sendText;
+$("txtin").addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter") sendText();
+});
+
+// ───────── 输入锁 ─────────
+function toggleLock() {
+  inputLocked = !inputLocked;
+  const b = $("btn-lock");
+  b.classList.toggle("on", inputLocked);
+  b.textContent = inputLocked ? "🔒 输入锁定" : "🔓 输入已解锁";
+  $("lockbanner").style.display = inputLocked ? "" : "none";
+  if (inputLocked) {
+    for (const code of [...stickyDown]) send({ t: "ku", c: codeAlias(code) });
+    stickyDown.clear(); buildDock();
+    if (document.pointerLockElement) document.exitPointerLock();
+    toast("输入已锁定");
+  } else {
+    toast("输入已解锁,现在可以控制远程电脑");
+    reqWake();
+  }
+}
+$("btn-lock").onclick = toggleLock;
+$("lockbanner").onclick = toggleLock;
+
+// ───────── iOS / iPadOS 专项适配 ─────────
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); // iPadOS 桌面版 UA
+}
+// 拦截 Safari 系统双指缩放 (gesture*), 避免与滚轮手势冲突
+["gesturestart", "gesturechange", "gestureend"].forEach(t =>
+  document.addEventListener(t, e => e.preventDefault()));
+// 键盘弹起适配: visualViewport 高度跟随, 竖屏菜单抽屉避开键盘
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const fitVV = () => {
+    const kb = Math.max(0, innerHeight - vv.height - vv.offsetTop);
+    $("app").style.height = vv.height + "px";
+    const menu = $("menu");
+    if (menu.classList.contains("open") && kb > 0 &&
+        document.body.className.includes("phone-portrait")) {
+      menu.style.bottom = kb + "px";
+    } else {
+      menu.style.bottom = "";
+    }
+  };
+  vv.addEventListener("resize", fitVV);
+  vv.addEventListener("scroll", fitVV);
+}
+// iPhone/iPad 硬解规格保守 (H.264 4K120 超出 Apple 硬解上限):
+// 首次连接自动切 1080p·60fps, 用户可在 ⚙ 手动调回, 仅执行一次
+function iosAutoTune() {
+  if (!isIOS() || localStorage.getItem("zr-ios-tuned")) return;
+  localStorage.setItem("zr-ios-tuned", "1");
+  send({ t: "cfg", scale: "1920x1080", fps: 60 });
+  toast("iOS 已自动切换 1080p·60fps 保障流畅 (⚙ 可调)", 4500);
+}
+
+// ───────── PWA 独立 App (安装到主屏幕, 脱离浏览器/ZCode 壳) ─────────
+let deferredInstall = null;
+(function setupPWA() {
+  const q = "k=" + encodeURIComponent(TOKEN);
+  const mk = (rel, href) => {
+    const l = document.createElement("link");
+    l.rel = rel; l.href = href; document.head.appendChild(l);
+  };
+  mk("manifest", "/manifest.webmanifest?" + q);
+  mk("apple-touch-icon", "/icon-192.png?" + q);
+  mk("icon", "/icon-192.png?" + q);
+  // SW 需要安全上下文 (https 或 localhost)
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }
+  const standalone = matchMedia("(display-mode: standalone)").matches ||
+                     window.navigator.standalone === true;
+  if (standalone) {
+    document.getElementById("install-hint").textContent = "✓ 已在独立 App 模式运行";
+    return;
+  }
+  window.addEventListener("beforeinstallprompt", e => {
+    e.preventDefault();
+    deferredInstall = e;
+    document.getElementById("btn-install").style.display = "";
+  });
+})();
+$("btn-install").onclick = async () => {
+  if (deferredInstall) {
+    deferredInstall.prompt();
+    await deferredInstall.userChoice.catch(() => {});
+    deferredInstall = null;
+    document.getElementById("btn-install").style.display = "none";
+    toast("安装完成后从主屏幕图标启动");
+    return;
+  }
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  toast(ios ? "iOS: Safari 分享菜单 → 添加到主屏幕"
+            : "浏览器菜单 → 安装应用 / 添加到主屏幕", 4000);
+};
+
+// ───────── 启动 ─────────
+if (location.protocol === "http:" && !window.isSecureContext) {
+  ov("需要 HTTPS", "当前为非安全上下文,浏览器禁止视频解码<br>请使用控制台打印的 <b>https://</b> 链接访问(或用 localhost)", false);
+} else if (!("VideoDecoder" in window)) {
+  ov("浏览器不支持 WebCodecs", "请使用 Chrome/Edge 94+ 或 Safari 16.4+ 打开", false);
+} else {
+  connect();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && ws && ws.readyState > 1) connect(); });
+</script>
+</body>
+</html>
