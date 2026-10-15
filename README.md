@@ -2,6 +2,30 @@
 
 一个单 exe 的 Windows 远控主机端：**DXGI 桌面复制捕获 + NVENC 硬件编码 + WebSocket 推流**，
 内置网页客户端（WebCodecs 硬件解码），手机/电脑浏览器扫码即用。为 4K 120Hz 屏幕设计。
+另附 iOS 原生壳 App（WKWebView），可打包成 IPA 安装到越狱/巨魔设备。
+
+## iOS App（IPA）
+
+`ios/` 是一个极简 WKWebView 壳工程（xcodegen + Swift，约 600 行），把网页客户端装成独立 App：
+
+- 首屏填 **主机地址 + 访问令牌**（支持粘贴完整链接自动拆分、**扫码** zremote.exe 控制台二维码），
+  保存在本机 UserDefaults，之后启动直达远程桌面
+- **自签证书放行**：仅对已保存的主机信任其自签证书（内网自用主机），其它站点走系统默认校验
+- 右下角 ⚙ 悬浮钮：断开重设 / 刷新；主机不可达时顶部红条提示重试
+- 横竖屏全支持（对应网页的三端自适应形态）、iPhone/iPad 双设备族、深色主题
+- 系统要求 iOS 15+（编译目标）/ **16.4+（运行时，WebCodecs 硬解）**
+
+**构建 IPA**（本地需 macOS + Xcode；或直接用仓库的 GitHub Actions）：
+
+```
+gh workflow run ios.yml          # 手动触发; push tag v* 自动构建并发布 Release
+gh run download -n ZRemote-ios -D dist
+```
+
+产出未签名 IPA（ldid 假签）：**越狱（RootHide/AppSync Unified）或 TrollStore 直装**；
+无越狱设备可用 SideStore/Feather/爱思助手等自签工具签名后安装。
+
+仓库：<https://github.com/liudubin/zremote>（Actions 的 macOS 构建需公开仓，代码不含任何令牌）
 
 ```
 ┌──────────┐   H.264@120fps   ┌────────────┐   WebCodecs 硬解
